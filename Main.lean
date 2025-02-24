@@ -2,6 +2,7 @@ import Cli.Basic
 import Autograde.EnvExtensions.DeclInfo
 import Autograde.EnvExtensions.GradeAttr
 import Autograde.Target
+import Autograde.Sources.Moodle
 import Lake.CLI.Main
 
 set_option autoImplicit false
@@ -161,6 +162,19 @@ def gradeCLI (parsed : Parsed) : IO UInt32 := do
     | some args => runGrade args
     | none => IO.println "Invalid input." return 1
 
+open IO.FS IO.Process Name Cli in
+def sourcesCLI (_ : Parsed) : IO UInt32 := do
+  IO.println "hi"
+  return 1
+
+def sources := `[Cli|
+  sources VIA sourcesCLI; ["0.0.1"]
+  "Fetch sources"
+
+  SUBCOMMANDS:
+    moodle
+]
+
 open Cli in
 /-- Setting up command line options and help text for `lake exe grade`. -/
 def gradeCmd : Cmd := `[Cli|
@@ -173,6 +187,9 @@ def gradeCmd : Cmd := `[Cli|
     directory : String; "Directory containing the submissions."
     module : String; "A single module. `directory` and `module` can't both be present."
     workingDirectory : String; ""
+
+  SUBCOMMANDS:
+    sources
 ]
 
 /-- The entrypoint to the `lake exe grade` command. -/
