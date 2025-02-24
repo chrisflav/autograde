@@ -1,0 +1,19 @@
+name = "autograde"
+version = "0.1.0"
+defaultTargets = ["autograde"]
+
+[[require]]
+name = "batteries"
+scope = "leanprover-community"
+
+[[require]]
+name = "Cli"
+scope = "leanprover"
+
+[[lean_lib]]
+name = "Autograde"
+
+[[lean_exe]]
+name = "grade"
+root = "Main"
+supportInterpreter = true
