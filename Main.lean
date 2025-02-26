@@ -25,7 +25,14 @@ instance : ToString Submission where
   toString := ToString.toString ∘ repr
 
 def renderAnalysisResults (exam : Exam) (results : Array AnalysisResult) : String :=
-  "\n".intercalate (Array.zipWith (fun exc res ↦ s!"{exc.name}: {res}") exam results).toList
+  let excs := "\n".intercalate
+    (Array.zipWith
+      (fun exc res ↦ s!"{exc.name}: {res} => {res.points (.ofNat exc.points)} / {Float.ofNat exc.points}")
+      exam results).toList
+  let totalRes : Float × Float := (Array.zip exam results).foldl (fun acc (exc, res) ↦
+    (acc.1 + .ofNat exc.points, acc.2 + res.points (.ofNat exc.points))) (0, 0)
+  let footer := s!"total: {totalRes.2} / {totalRes.1}"
+  s!"{excs}\n{footer}"
 
 def GradedSubmission.render {exam : Exam} (sub : GradedSubmission exam) : String :=
   let res := renderAnalysisResults exam sub.results
