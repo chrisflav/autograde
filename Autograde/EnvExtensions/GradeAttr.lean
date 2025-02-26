@@ -1,3 +1,4 @@
+import Autograde.Basic
 import Autograde.Target
 
 open Lean Elab
@@ -20,12 +21,6 @@ open Parser
 syntax gradeArgsRest := Tactic.optConfig (ppSpace ident)*
 
 syntax (name := grade) "grade" gradeArgsRest : attr
-
-def Lean.ConstantInfo.getConstantVal? (info : ConstantInfo) : Option ConstantVal :=
-  match info with
-  | .thmInfo val => val.toConstantVal
-  | .defnInfo val => val.toConstantVal
-  | _ => none
 
 initialize Lean.registerBuiltinAttribute {
   name := `grade

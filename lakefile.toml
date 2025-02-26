@@ -1,6 +1,6 @@
 name = "autograde"
 version = "0.1.0"
-defaultTargets = ["autograde"]
+defaultTargets = ["grade"]
 
 [[require]]
 name = "batteries"

@@ -1,14 +1,7 @@
+import Autograde.Basic
 import Autograde.EnvExtensions.DeclInfo
 
 open Lean Elab Command
-
-def Lean.ConstantInfo.getConstantVal? : ConstantInfo → Option ConstantVal
-  | .thmInfo val => val.toConstantVal
-  | .defnInfo val => val.toConstantVal
-  | _ => none
-
-def Lean.Name.isRelevant (name : Name) : Bool :=
-  !((Lean.privateToUserName? name).getD name).isInternal
 
 partial
 def scanInfoTree : InfoTree → NameSet
