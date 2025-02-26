@@ -24,7 +24,7 @@ from the moodle website to some folder `input`.
 
 To put the files in the correct form for further processing by `autograde`, run
 ```
-lake exe grade source moodle input assignments
+lake exe grade sources moodle input assignments
 ```
 where `assignments` is a path of your choice.
 
