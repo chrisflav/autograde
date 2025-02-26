@@ -80,10 +80,8 @@ def preprocessFiles (exerciseModule : Name)
   let cfg ← IO.Process.spawn { cmd := "lake", args := args }
   IO.Process.Child.wait cfg
 
-def gradeModule (exEnv : Environment) (targets : Array GradingTarget)
-    (module : Name) : IO (Array AnalysisResult) := do
-  _ ← initSearchPath ""
-  let env ← importModules #[module] {} (trustLevel := 1024)
+def gradeEnv (exEnv env : Environment) (targets : Array GradingTarget) :
+    Array AnalysisResult := Id.run do
   let decls := declInfoExt.getState env |>.toArray
   let mut results : Array AnalysisResult := #[]
   for target in targets do
@@ -91,17 +89,23 @@ def gradeModule (exEnv : Environment) (targets : Array GradingTarget)
     for decl in decls do
       if Kernel.isDefEqGuarded exEnv default target.expr decl.type then
         let bad := decl.axiomsUsed.filter (fun a ↦ a ∉ target.allowedAxioms)
-        if bad.isEmpty then res := .success decl.name
+        if bad.isEmpty then res := .success decl.name.toString.toName
           else
             let upd : AnalysisResult → AnalysisResult
-              | .part cs => .part <| (decl.name, bad) :: cs
-              | .fail => .part [(decl.name, bad)]
+              | .part cs => .part <| (decl.name.toString.toName, bad.map (fun x ↦ x.toString.toName)) :: cs
+              | .fail => .part [(decl.name.toString.toName, bad.map (fun x ↦ x.toString.toName))]
               | x => x
             res := upd res
     results := results ++ #[res]
   return results
 
-def gradeSubmission (ctxt : GradingContext) (exEnv : Environment) (exam : Exam) (sub : Submission) :
+unsafe def gradeModule (exEnv : Environment) (targets : Array GradingTarget)
+    (module : Name) : IO (Array AnalysisResult) := do
+  _ ← initSearchPath ""
+  withImportModules #[⟨module, false⟩] {} (trustLevel := 1024) <| fun env ↦
+    return gradeEnv exEnv env targets
+
+unsafe def gradeSubmission (ctxt : GradingContext) (exEnv : Environment) (exam : Exam) (sub : Submission) :
     IO (GradedSubmission exam) := do
   let res ← gradeModule exEnv exam (ctxt.toModule sub)
   return { sub with results := res }
@@ -121,7 +125,7 @@ def parseSubmission (fp : IO.FS.DirEntry) : Option Submission := do
 def Args.defaultContext (args : Args) : GradingContext where
   toModule s := s!"{args.workingDirectory}.sub{s.studentNumber}".toName
 
-def runGrade (args : Args) : IO UInt32 := do
+unsafe def runGrade (args : Args) : IO UInt32 := do
   _ ← initSearchPath ""
   let exEnv ← importModules #[args.exerciseModule] {}
   let exam : Exam := gradingTargetExt.getState exEnv |>.toArray
@@ -143,20 +147,20 @@ def runGrade (args : Args) : IO UInt32 := do
   | .directory path =>
       IO.println s!"Processing directory at {path}."
       let submissions := (← path.readDir).filterMap parseSubmission
-      IO.println s!"{submissions}"
       let ret ← preprocessFiles args.exerciseModule <|
         submissions.map fun s ↦ (s.path, ctxt.toModule s)
       if ret != 0 then
         IO.println "Failed during preprocessing. Exiting."
         return ret
       else
+        IO.println "Preprocessing completed."
         for sub in submissions do
           let res ← gradeSubmission ctxt exEnv exam sub
           IO.println res.render
         return 0
 
 open IO.FS IO.Process Name Cli in
-def gradeCLI (parsed : Parsed) : IO UInt32 := do
+unsafe def gradeCLI (parsed : Parsed) : IO UInt32 := do
   let mayArgs := Args.fromParsed parsed
   match mayArgs with
     | some args => runGrade args
@@ -177,7 +181,7 @@ def sources := `[Cli|
 
 open Cli in
 /-- Setting up command line options and help text for `lake exe grade`. -/
-def gradeCmd : Cmd := `[Cli|
+unsafe def gradeCmd : Cmd := `[Cli|
   grade VIA gradeCLI; ["0.0.1"]
   "Automatically grade a .lean exercise."
 
@@ -193,4 +197,4 @@ def gradeCmd : Cmd := `[Cli|
 ]
 
 /-- The entrypoint to the `lake exe grade` command. -/
-def main (args : List String) : IO UInt32 := gradeCmd.validate args
+unsafe def main (args : List String) : IO UInt32 := gradeCmd.validate args
