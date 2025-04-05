@@ -1,5 +1,6 @@
 import Autograde.Basic
 import Autograde.EnvExtensions.DeclInfo
+import Autograde.AxiomBlame
 
 open Lean Elab Command
 
@@ -24,20 +25,41 @@ partial def scanForTactics : InfoTree → NameSet
 def getAllTactics (ts : PersistentArray InfoTree) : NameSet :=
   ts.toArray.map scanForTactics |>.foldl .union ∅
 
-def getCurrDeclInfo : CommandElabM DeclInfo := do
+def getCurrDeclInfo : CommandElabM (Option DeclInfo) := do
   let ts ← getInfoTrees
   let declName : Name := (getAllNames ts).toArray[0]!
   let tactics := (getAllTactics ts).toArray
-  let val ← (← getConstInfo declName).getConstantVal?.getDM <| throwError "Unsupported declaration type"
-  let axs := ((((CollectAxioms.collect declName).run (← getEnv)).run {}).2).axioms
-  pure { name := declName, type := val.type, axiomsUsed := axs, tacticsUsed := tactics }
+  match (← getConstInfo declName).getConstantVal? with
+  | some val =>
+    let axs := getAxiomPathsWithTypes (← getEnv) declName
+    return some { name := declName, type := val.type, axiomsUsed := axs, tacticsUsed := tactics }
+  | none => return none
+
+def newLocalName : CommandElabM Name := do
+  let decls ← liftCoreM Batteries.Tactic.Lint.getDeclsInCurrModule
+  return s!"name_{(decls.filter fun name ↦ ¬ (name.isInternal)).size}".toName
 
 @[command_elab declaration]
 def appendDeclInfo : CommandElab := fun
 | `($dms:declModifiers example $sig:optDeclSig $val:declVal) => do
-  let name ← mkAuxName `example 1
+  let name ← newLocalName
   elabDeclaration <| ← `($dms:declModifiers def $(mkIdent name) $sig:optDeclSig $val:declVal)
-  addDeclInfo (← getCurrDeclInfo)
+  match (← getCurrDeclInfo) with
+  | some info => addDeclInfo info
+  | none => pure ()
 | stx => do
   elabDeclaration stx
-  addDeclInfo (← getCurrDeclInfo)
+  match (← getCurrDeclInfo) with
+  | some info => addDeclInfo info
+  | none => pure ()
+
+macro "stop_recording" : command => do
+  `(
+    attribute [-command_elab] appendDeclInfo
+  )
+
+macro "resume_recording" : command => do
+  let declKind := mkIdent `declaration
+  `(
+    attribute [local command_elab $declKind] appendDeclInfo
+  )

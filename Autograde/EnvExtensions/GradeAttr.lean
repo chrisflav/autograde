@@ -1,6 +1,8 @@
 import Autograde.Basic
 import Autograde.Target
 
+namespace Autograde
+
 open Lean Elab
 
 initialize gradingTargetExt : SimplePersistentEnvExtension GradingTarget (Std.HashSet GradingTarget) ←
@@ -31,11 +33,16 @@ initialize Lean.registerBuiltinAttribute {
       let cfg ← liftCommandElabM <| elabGradingTargetConfig c
       let info ← getConstInfo decl
       let val ← info.getConstantVal?.getDM <| throwError "Unsupported declaration type."
+      let prereqTypes : Array Expr ←
+        cfg.allowedPrerequisites.filterMapM $ fun decl ↦ do
+          return ConstantVal.type <$> (← getConstInfo decl).getConstantVal?
       let target : GradingTarget :=
-        { cfg with name := decl, expr := val.type }
+        { cfg with name := decl, expr := val.type, allowedPrerequisitesTypes := prereqTypes }
       addGradingTarget target
     | _ => throwUnsupportedSyntax
 }
 
 elab "#gradingtargets" : command => do
   logInfo s!"{← getGradingTargets}"
+
+end Autograde

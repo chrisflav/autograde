@@ -3,11 +3,12 @@ import Autograde.EnvExtensions.DeclInfo
 import Autograde.EnvExtensions.GradeAttr
 import Autograde.Target
 import Autograde.Sources.Moodle
+import Autograde.Grade
 import Lake.CLI.Main
 
 set_option autoImplicit false
 
-open Lean System.FilePath Elab Command
+open Lean System.FilePath Elab Command Autograde
 
 structure Submission where
   path : System.FilePath
@@ -15,24 +16,11 @@ structure Submission where
   studentName : String
 deriving Repr
 
-abbrev Exam : Type :=
-  Array GradingTarget
-
 structure GradedSubmission (exam : Exam) extends Submission where
   results : Array AnalysisResult
 
 instance : ToString Submission where
   toString := ToString.toString ∘ repr
-
-def renderAnalysisResults (exam : Exam) (results : Array AnalysisResult) : String :=
-  let excs := "\n".intercalate
-    (Array.zipWith
-      (fun exc res ↦ s!"{exc.name}: {res} => {res.points (.ofNat exc.points)} / {Float.ofNat exc.points}")
-      exam results).toList
-  let totalRes : Float × Float := (Array.zip exam results).foldl (fun acc (exc, res) ↦
-    (acc.1 + .ofNat exc.points, acc.2 + res.points (.ofNat exc.points))) (0, 0)
-  let footer := s!"total: {totalRes.2} / {totalRes.1}"
-  s!"{excs}\n{footer}"
 
 def GradedSubmission.render {exam : Exam} (sub : GradedSubmission exam) : String :=
   let res := renderAnalysisResults exam sub.results
@@ -86,25 +74,6 @@ def preprocessFiles (exerciseModule : Name)
     args := args.append #[name.toString]
   let cfg ← IO.Process.spawn { cmd := "lake", args := args }
   IO.Process.Child.wait cfg
-
-def gradeEnv (exEnv env : Environment) (targets : Array GradingTarget) :
-    Array AnalysisResult := Id.run do
-  let decls := declInfoExt.getState env |>.toArray
-  let mut results : Array AnalysisResult := #[]
-  for target in targets do
-    let mut res : AnalysisResult := .fail
-    for decl in decls do
-      if Kernel.isDefEqGuarded exEnv default target.expr decl.type then
-        let bad := decl.axiomsUsed.filter (fun a ↦ a ∉ target.allowedAxioms)
-        if bad.isEmpty then res := .success decl.name.toString.toName
-          else
-            let upd : AnalysisResult → AnalysisResult
-              | .part cs => .part <| (decl.name.toString.toName, bad.map (fun x ↦ x.toString.toName)) :: cs
-              | .fail => .part [(decl.name.toString.toName, bad.map (fun x ↦ x.toString.toName))]
-              | x => x
-            res := upd res
-    results := results ++ #[res]
-  return results
 
 unsafe def gradeModule (exEnv : Environment) (targets : Array GradingTarget)
     (module : Name) : IO (Array AnalysisResult) := do

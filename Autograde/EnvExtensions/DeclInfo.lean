@@ -17,3 +17,6 @@ def getDeclInfos {m : Type → Type} [Monad m] [MonadEnv m] : m (Std.HashSet Dec
 elab "#declinfos" : command => do
   let decls ← getDeclInfos
   logInfo s!"{decls.toArray.toList}"
+
+elab "clear_decls" : command => do
+  modifyEnv (fun e ↦ declInfoExt.setState e {})
