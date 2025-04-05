@@ -35,14 +35,11 @@ def getCurrDeclInfo : CommandElabM (Option DeclInfo) := do
     return some { name := declName, type := val.type, axiomsUsed := axs, tacticsUsed := tactics }
   | none => return none
 
-def newLocalName : CommandElabM Name := do
-  let decls ← liftCoreM Batteries.Tactic.Lint.getDeclsInCurrModule
-  return s!"name_{(decls.filter fun name ↦ ¬ (name.isInternal)).size}".toName
-
 @[command_elab declaration]
 def appendDeclInfo : CommandElab := fun
 | `($dms:declModifiers example $sig:optDeclSig $val:declVal) => do
-  let name ← newLocalName
+  let baseName := (← getCurrNamespace) ++ `example
+  let name := `_root_ ++ (← mkAuxName baseName 1)
   elabDeclaration <| ← `($dms:declModifiers def $(mkIdent name) $sig:optDeclSig $val:declVal)
   match (← getCurrDeclInfo) with
   | some info => addDeclInfo info
