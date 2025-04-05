@@ -41,7 +41,7 @@ import Autograde.EnvExtensions.GradeAttr
 lemma ex1 (n m : ℕ) : n + m = m + n := by
   omega
 
-@[grade (config := { points := 5 })]
+@[grade (config := { points := 5, allowedPrerequisites := #[``ex1] })]
 lemma ex2 (n m k : ℕ) : (n + m) * k = k * n + m * k := by
   sorry
 
