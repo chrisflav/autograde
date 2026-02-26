@@ -75,10 +75,16 @@ def preprocessFiles (exerciseModule : Name)
   let cfg ← IO.Process.spawn { cmd := "lake", args := args }
   IO.Process.Child.wait cfg
 
+-- The core lean function only allows `loadExts := false` here
+unsafe def withImportModulesWithExt {α : Type} (imports : Array Import) (opts : Options)
+    (act : Environment → IO α) (trustLevel : UInt32 := 0) : IO α := do
+  let env ← importModules (loadExts := true) imports opts trustLevel
+  try act env finally env.freeRegions
+
 unsafe def gradeModule (exEnv : Environment) (targets : Array GradingTarget)
     (module : Name) : IO (Array AnalysisResult) := do
   _ ← initSearchPath ""
-  withImportModules #[⟨module, false⟩] {} (trustLevel := 1024) <| fun env ↦
+  withImportModulesWithExt #[{ module := module }] {} (trustLevel := 1024) <| fun env ↦
     return gradeEnv exEnv env targets
 
 unsafe def gradeSubmission (ctxt : GradingContext) (exEnv : Environment) (exam : Exam) (sub : Submission) :
@@ -103,7 +109,7 @@ def Args.defaultContext (args : Args) : GradingContext where
 
 unsafe def runGrade (args : Args) : IO UInt32 := do
   _ ← initSearchPath ""
-  let exEnv ← importModules #[args.exerciseModule] {}
+  let exEnv ← importModules (loadExts := true) #[args.exerciseModule] {}
   let exam : Exam := gradingTargetExt.getState exEnv |>.toArray
   let ctxt : GradingContext := args.defaultContext
   match args.mode with

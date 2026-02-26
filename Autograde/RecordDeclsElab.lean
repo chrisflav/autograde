@@ -38,8 +38,7 @@ def getCurrDeclInfo : CommandElabM (Option DeclInfo) := do
 @[command_elab declaration]
 def appendDeclInfo : CommandElab := fun
 | `($dms:declModifiers example $sig:optDeclSig $val:declVal) => do
-  let baseName := (← getCurrNamespace) ++ `example
-  let name := `_root_ ++ (← mkAuxName baseName 1)
+  let name := `_root_ ++ (← mkAuxDeclName)
   elabDeclaration <| ← `($dms:declModifiers def $(mkIdent name) $sig:optDeclSig $val:declVal)
   match (← getCurrDeclInfo) with
   | some info => addDeclInfo info
