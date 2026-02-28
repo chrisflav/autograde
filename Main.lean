@@ -45,6 +45,7 @@ structure Args where
   mode : Mode
   preprocessOnly : Bool
   workingDirectory : Name
+  csvOutput : Option String
 
 def Args.fromParsed (args : Cli.Parsed) : Option Args := do
   let preprocess : Bool := false
@@ -54,11 +55,13 @@ def Args.fromParsed (args : Cli.Parsed) : Option Args := do
     | some path, _ => pure <| Mode.directory path.value
     | none, some name => pure <| .single name.value
     | none, none => none
+  let csv : Option String := args.flag? "csv" |>.map (·.value)
   let args : Args :=
     { exerciseModule := exercise
       mode := mode
       preprocessOnly := preprocess
-      workingDirectory := workingDir }
+      workingDirectory := workingDir
+      csvOutput := csv }
   some args
 
 def Lean.Name.toFilePath (nm : Name) : System.FilePath :=
@@ -107,6 +110,42 @@ def parseSubmission (fp : IO.FS.DirEntry) : Option Submission := do
 def Args.defaultContext (args : Args) : GradingContext where
   toModule s := s!"{args.workingDirectory}.sub{s.studentNumber}".toName
 
+private def escapeCsvField (s : String) : String :=
+  if s.contains ',' || s.contains '"' || s.contains '\n' then
+    "\"" ++ s.replace "\"" "\"\"" ++ "\""
+  else
+    s
+
+/-- Format the violations of a partial solution as a human-readable comment.
+Each violation shows the forbidden axiom and the declaration chain leading to it. -/
+private def analysisResultComment (res : AnalysisResult) : String :=
+  match res with
+  | .fail | .success _ => ""
+  | .part candidates =>
+    let parts := candidates.map fun (declName, violations) =>
+      let vs := violations.toList.map fun (ax, path) =>
+        let chain := " → ".intercalate (path.reverse.map (fun n : Name => n.toString) ++ [ax.toString])
+        s!"uses `{ax}` via {chain}"
+      s!"`{declName}`: " ++ "; ".intercalate vs
+    "; ".intercalate parts
+
+private def csvLine (fields : List String) : String :=
+  ",".intercalate (fields.map escapeCsvField)
+
+private def writeCSV (path : String) (exam : Exam)
+    (submissions : Array (GradedSubmission exam)) : IO Unit := do
+  let header := csvLine <|
+    ["Student Name", "Student ID", "Total Points", "Feedback"] ++
+    exam.toList.flatMap fun tgt =>
+      [s!"{tgt.name} Points", s!"{tgt.name} Comments"]
+  let rows := submissions.toList.map fun (sub : GradedSubmission exam) =>
+    let total : Float := (Array.zip exam sub.results).foldl
+      (fun acc (exc, res) => acc + res.points (.ofNat exc.points)) 0
+    let exCols := (Array.zip exam sub.results).toList.flatMap fun (exc, res) =>
+      [s!"{res.points (.ofNat exc.points)}", analysisResultComment res]
+    csvLine ([sub.studentName, s!"{sub.studentNumber}", s!"{total}", ""] ++ exCols)
+  IO.FS.writeFile path ("\n".intercalate (header :: rows) ++ "\n")
+
 unsafe def runGrade (args : Args) : IO UInt32 := do
   _ ← initSearchPath ""
   let exEnv ← importModules (loadExts := true) #[args.exerciseModule] {}
@@ -136,9 +175,14 @@ unsafe def runGrade (args : Args) : IO UInt32 := do
         return ret
       else
         IO.println "Preprocessing completed."
+        let mut gradedSubs : Array (GradedSubmission exam) := #[]
         for sub in submissions do
           let res ← gradeSubmission ctxt exEnv exam sub
           IO.println res.render
+          gradedSubs := gradedSubs.push res
+        if let some csvPath := args.csvOutput then do
+          writeCSV csvPath exam gradedSubs
+          IO.println s!"CSV results written to {csvPath}."
         return 0
 
 open IO.FS IO.Process Name Cli in
@@ -173,6 +217,7 @@ unsafe def gradeCmd : Cmd := `[Cli|
     directory : String; "Directory containing the submissions."
     module : String; "A single module. `directory` and `module` can't both be present."
     workingDirectory : String; ""
+    csv : String; "Path to write CSV output (directory mode only)."
 
   SUBCOMMANDS:
     sources
